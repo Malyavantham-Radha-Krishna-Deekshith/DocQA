@@ -1,0 +1,96 @@
+"""Top-level orchestrator wiring OCR -> normalization -> chunking ->
+embeddings -> FAISS -> retrieval -> guardrails -> LLM together
+(requirement 13's end-to-end flow). This is the module the UI layer talks
+to — it has no Streamlit-specific code so the same pipeline can sit behind
+a FastAPI app later without changes.
+"""
+from dataclasses import dataclass
+from typing import List, Tuple
+
+from app.config import settings
+from app.chunking.structure_chunker import chunk_document
+from app.document_processing.normalizer import normalize_markdown
+from app.embeddings.embedder import Embedder
+from app.guardrails.grounding import format_sources
+from app.llm.mistral_llm import MistralLLMClient
+from app.memory.session_memory import SessionMemory
+from app.ocr.mistral_ocr import MistralOCRClient
+from app.retrieval.retriever import Retriever
+from app.vectorstore.faiss_store import FaissStore
+
+
+@dataclass
+class AnswerResult:
+    answer: str
+    sources: str
+    is_grounded: bool
+    rewritten_query: str
+
+
+class DocumentQAPipeline:
+    def __init__(self):
+        self._ocr = MistralOCRClient()
+        self._embedder = Embedder()
+        self._llm = MistralLLMClient()
+        self._store = FaissStore.load(settings.FAISS_INDEX_DIR, self._embedder.dimension)
+        self._retriever = Retriever(self._embedder, self._store, self._llm)
+
+    def process_documents(self, images: List[Tuple[bytes, str]]) -> dict:
+        """images: list of (image_bytes, filename). Returns a summary dict."""
+        ocr_results = self._ocr.process_images(images)
+
+        total_chunks = 0
+        for ocr_result in ocr_results:
+            for page in ocr_result.pages:
+                page.markdown = normalize_markdown(page.markdown)
+
+            chunks = chunk_document(
+                ocr_result,
+                max_tokens=settings.CHUNK_SIZE_TOKENS,
+                overlap_ratio=settings.DEFAULT_OVERLAP_RATIO,
+            )
+            if not chunks:
+                continue
+
+            embeddings = self._embedder.embed_texts([c.text for c in chunks])
+            self._store.add(chunks, embeddings)
+            total_chunks += len(chunks)
+
+        self._store.save(settings.FAISS_INDEX_DIR)
+
+        return {
+            "documents_processed": len(ocr_results),
+            "chunks_indexed": total_chunks,
+        }
+
+    def answer_question(self, question: str, memory: SessionMemory) -> AnswerResult:
+        if self._store.is_empty:
+            return AnswerResult(
+                answer=settings.NOT_FOUND_MESSAGE,
+                sources="",
+                is_grounded=False,
+                rewritten_query=question,
+            )
+
+        result = self._retriever.retrieve(question, memory)
+
+        if not result.is_relevant or not result.chunks:
+            answer = settings.NOT_FOUND_MESSAGE
+            memory.add_turn(question, answer)
+            return AnswerResult(
+                answer=answer,
+                sources="",
+                is_grounded=False,
+                rewritten_query=result.rewritten_query,
+            )
+
+        answer = self._llm.generate_answer(result.rewritten_query, result.chunks)
+        sources = format_sources(result.chunks)
+        memory.add_turn(question, answer)
+
+        return AnswerResult(
+            answer=answer,
+            sources=sources,
+            is_grounded=True,
+            rewritten_query=result.rewritten_query,
+        )
