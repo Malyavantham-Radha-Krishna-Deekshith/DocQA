@@ -149,7 +149,7 @@ def render_qa_section():
 
 def main():
     _init_state()
-    st.title("📄 Document Q&A")
+    st.title("📄 Image Q&A")
     st.caption("Upload or capture documents, then ask questions grounded strictly in their content.")
 
     render_capture_section()
