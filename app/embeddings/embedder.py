@@ -5,13 +5,21 @@ embedding API. Swapping to a Mistral/OpenAI embedding endpoint later only
 means changing this one class.
 """
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 from app.config import settings
 
 
 class Embedder:
     def __init__(self, model_name: str = settings.EMBEDDING_MODEL_NAME):
+        # Deferred import: sentence-transformers drags in torch/transformers,
+        # a slow, heavy import. Done here (on first real use) rather than at
+        # module load time so the FastAPI process can bind to its port
+        # immediately on startup — Render (and similar platforms) kill the
+        # deploy if the port isn't open within their detection window, and
+        # that heavy import alone can burn through it before uvicorn ever
+        # gets a chance to start listening.
+        from sentence_transformers import SentenceTransformer
+
         self._model = SentenceTransformer(model_name)
         self.dimension = self._model.get_sentence_embedding_dimension()
 
