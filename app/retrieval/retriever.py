@@ -17,6 +17,7 @@ class RetrievalResult:
     rewritten_query: str
     chunks: List[dict]
     is_relevant: bool
+    is_broad_overview: bool = False
 
 
 class Retriever:
@@ -32,16 +33,31 @@ class Retriever:
         top_k: int = settings.TOP_K,
         threshold: float = settings.RELEVANCE_THRESHOLD,
     ) -> RetrievalResult:
-        rewritten = self._llm.rewrite_query(question, memory.as_context_string(), self._store.document_filenames)
+        understanding = self._llm.understand_query(
+            question, memory.as_context_string(), self._store.document_filenames
+        )
 
-        query_embedding = self._embedder.embed_query(rewritten)
+        if understanding.is_broad_overview:
+            # Bypass similarity search entirely: a vague "give me everything"
+            # question doesn't meaningfully rank documents by relevance, so
+            # top-k would arbitrarily favor whichever ones happen to embed
+            # closest to the vague phrasing. Include every document instead.
+            chunks = self._store.all_metadata()[: settings.MAX_BROAD_CONTEXT_CHUNKS]
+            return RetrievalResult(
+                rewritten_query=understanding.rewritten_query,
+                chunks=chunks,
+                is_relevant=bool(chunks),
+                is_broad_overview=True,
+            )
+
+        query_embedding = self._embedder.embed_query(understanding.rewritten_query)
         chunks = self._store.search(query_embedding, top_k=top_k)
 
         top_score = chunks[0]["score"] if chunks else 0.0
         relevant = is_relevant(top_score, threshold)
 
         return RetrievalResult(
-            rewritten_query=rewritten,
+            rewritten_query=understanding.rewritten_query,
             chunks=chunks if relevant else [],
             is_relevant=relevant,
         )

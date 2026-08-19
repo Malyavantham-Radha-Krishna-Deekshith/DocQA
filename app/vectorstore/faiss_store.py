@@ -67,6 +67,14 @@ class FaissStore:
     def is_empty(self) -> bool:
         return self._index.ntotal == 0
 
+    def all_metadata(self) -> List[dict]:
+        """Every indexed chunk's metadata, in insertion order — unfiltered
+        by similarity. Used for broad "overview of everything" questions,
+        where similarity-ranked top-k would arbitrarily favor whichever
+        documents happen to score highest against a vague query instead of
+        covering every uploaded document."""
+        return [dict(m) for m in self._metadata]
+
     @property
     def document_filenames(self) -> List[str]:
         """Unique filenames in upload order, for resolving positional

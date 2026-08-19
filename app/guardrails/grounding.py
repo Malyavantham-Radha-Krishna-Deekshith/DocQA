@@ -18,8 +18,8 @@ def is_relevant(top_score: float, threshold: float = settings.RELEVANCE_THRESHOL
     return top_score >= threshold
 
 
-def build_grounding_system_prompt() -> str:
-    return f"""You are a document question-answering assistant. Follow these rules strictly:
+def build_grounding_system_prompt(broad_overview: bool = False) -> str:
+    prompt = f"""You are a document question-answering assistant. Follow these rules strictly:
 
 1. Answer ONLY using the provided document context below. Do not use any external or general knowledge.
 2. Do not guess or infer information that is not explicitly present in the context.
@@ -33,6 +33,17 @@ def build_grounding_system_prompt() -> str:
    - Several distinct facts: one per line, each starting with "- ".
    - Facts that fall into distinct groups (e.g. different sections of a form): a short label for the group on its own line, followed by its "- " bullet lines, with a blank line between groups.
 """
+    if broad_overview:
+        prompt += (
+            "9. This is a broad overview request covering everything uploaded, not one specific fact — "
+            "the context below includes every uploaded document, not just ones matched to the question. "
+            "Organize your answer by document: one section per document, using its filename as the "
+            "section label, followed by that document's key facts as \"- \" bullet lines. If a "
+            "particular document has nothing relevant to contribute, skip that document's section "
+            "entirely rather than forcing something. Only fall back to rule 5's not-found message if "
+            "NONE of the documents have anything relevant to contribute.\n"
+        )
+    return prompt
 
 
 def format_sources(chunks: List[dict]) -> str:

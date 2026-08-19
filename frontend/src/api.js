@@ -1,19 +1,23 @@
 import { API_BASE_URL } from "./config.js";
 
-const SESSION_STORAGE_KEY = "docqa_session_id";
+// Deliberately in-memory only, not localStorage: the backend session
+// (documents + chat memory) survives for as long as this id is reused, but
+// the chat log on screen is only ever what's rendered in the current page
+// load. Persisting the id across reloads made those two fall out of sync —
+// a refresh looked like a fresh start but was still talking to the old,
+// invisible session underneath, so an answer could be shaped by history
+// the user could no longer see. Regenerating on every load keeps what's
+// visible and what the backend remembers consistent.
+let sessionId = null;
 
 export function getSessionId() {
-  let id = localStorage.getItem(SESSION_STORAGE_KEY);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(SESSION_STORAGE_KEY, id);
-  }
-  return id;
+  if (!sessionId) sessionId = crypto.randomUUID();
+  return sessionId;
 }
 
 export function resetSessionId() {
-  localStorage.removeItem(SESSION_STORAGE_KEY);
-  return getSessionId();
+  sessionId = crypto.randomUUID();
+  return sessionId;
 }
 
 async function request(path, options = {}) {

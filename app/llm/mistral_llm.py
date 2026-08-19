@@ -1,8 +1,17 @@
-"""Mistral chat client for query rewriting and grounded answer generation."""
+"""Mistral chat client for query understanding and grounded answer generation."""
+import json
+from dataclasses import dataclass
+
 from mistralai.client import Mistral
 
 from app.config import settings
 from app.guardrails.grounding import build_grounding_system_prompt, build_context_block, NOT_FOUND_MESSAGE
+
+
+@dataclass
+class QueryUnderstanding:
+    rewritten_query: str
+    is_broad_overview: bool
 
 
 class MistralLLMClient:
@@ -12,59 +21,79 @@ class MistralLLMClient:
         self._client = Mistral(api_key=api_key)
         self._model = model
 
-    def rewrite_query(self, question: str, memory_context: str, document_names: list[str] | None = None) -> str:
-        """Resolves conversational references (e.g. 'its' -> the last
-        discussed entity) using prior turns, and positional references (e.g.
-        "picture 2", "the second document") using the actual list of
-        uploaded documents. Memory and the document list are only used to
-        disambiguate the question text itself, never as a source of facts
-        (requirement 8).
+    def understand_query(
+        self, question: str, memory_context: str, document_names: list[str] | None = None
+    ) -> QueryUnderstanding:
+        """One call doing two things, to avoid a second round-trip per question:
+
+        1. Rewrites the question to be fully self-contained — resolving
+           conversational references (e.g. 'its' -> the last discussed
+           entity) using prior turns, and positional references (e.g.
+           "picture 2", "the second document") using the actual list of
+           uploaded documents. Memory and the document list only disambiguate
+           the question text itself, never a source of facts (requirement 8).
+        2. Classifies whether the question is a broad request for an overview
+           of everything uploaded ("give me detailed info", "what's in
+           these") rather than a specific, narrow question — most users
+           won't name a document when asking broadly, so this can't be a
+           keyword check; it needs actual understanding.
 
         document_names matters even without conversational context: a first
         question like "what's in picture 2?" still needs the document list
-        to resolve, so rewriting isn't gated on memory_context alone.
+        to resolve, and a first question can just as easily be a broad
+        overview request. Only skipped when there's nothing to disambiguate
+        and too few documents for "broad vs. specific" to be a meaningful
+        distinction.
         """
         document_names = document_names or []
         if not memory_context and len(document_names) < 2:
-            return question
+            return QueryUnderstanding(rewritten_query=question, is_broad_overview=False)
 
-        documents_block = (
-            "\n".join(f"{i + 1}. {name}" for i, name in enumerate(document_names))
-            if document_names
-            else "(none uploaded yet)"
-        )
+        documents_block = "\n".join(f"{i + 1}. {name}" for i, name in enumerate(document_names))
 
         prompt = (
             "Given the uploaded document list, the conversation history, and a follow-up "
-            "question, rewrite the follow-up question to be fully self-contained. "
-            "Resolve pronouns and references using the conversation history. Resolve "
-            "positional references to documents (e.g. \"picture 2\", \"the second image\", "
-            "\"the second document\") using the numbered document list below, naming the "
-            "actual filename instead of the position.\n\n"
-            "If the follow-up question is about a different document or topic than the "
-            "conversation history, treat it as a fresh question about that document — do "
-            "not merge it with the prior topic. Output ONLY the rewritten question, "
-            "nothing else.\n\n"
+            "question, respond with ONLY a JSON object (no other text) with exactly these keys:\n\n"
+            '"rewritten_question": the question rewritten to be fully self-contained. Resolve '
+            "pronouns and references using the conversation history. Resolve positional references "
+            'to documents (e.g. "picture 2", "the second image", "the second document") using the '
+            "numbered document list below, naming the actual filename instead of the position. If "
+            "the follow-up question is about a different document or topic than the conversation "
+            "history, treat it as a fresh question about that document — do not merge it with the "
+            "prior topic.\n\n"
+            '"is_broad_overview": true if the question is a broad request for an overview/summary '
+            "covering everything uploaded (e.g. \"give me detailed info\", \"what's in these\", "
+            '"summarize these"), false if it is a specific question about particular content.\n\n'
             f"Uploaded documents (in upload order):\n{documents_block}\n\n"
             f"Conversation history:\n{memory_context or '(none yet)'}\n\n"
-            f"Follow-up question: {question}\n\n"
-            "Rewritten standalone question:"
+            f"Follow-up question: {question}"
         )
         response = self._client.chat.complete(
             model=self._model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
+            response_format={"type": "json_object"},
         )
-        rewritten = response.choices[0].message.content.strip()
-        return rewritten or question
+        raw = response.choices[0].message.content.strip()
+        try:
+            parsed = json.loads(raw)
+            rewritten = str(parsed.get("rewritten_question") or "").strip()
+            return QueryUnderstanding(
+                rewritten_query=rewritten or question,
+                is_broad_overview=bool(parsed.get("is_broad_overview", False)),
+            )
+        except (json.JSONDecodeError, AttributeError):
+            return QueryUnderstanding(rewritten_query=question, is_broad_overview=False)
 
-    def generate_answer(self, question: str, context_chunks: list[dict]) -> str:
+    def generate_answer(self, question: str, context_chunks: list[dict], broad_overview: bool = False) -> str:
         """context_chunks must already be relevance-filtered upstream
-        (guardrails.grounding.is_relevant) before reaching this call."""
+        (guardrails.grounding.is_relevant) before reaching this call, unless
+        broad_overview is set — that path intentionally includes every
+        document's chunks unfiltered (see Retriever.retrieve)."""
         if not context_chunks:
             return NOT_FOUND_MESSAGE
 
-        system_prompt = build_grounding_system_prompt()
+        system_prompt = build_grounding_system_prompt(broad_overview=broad_overview)
         context_block = build_context_block(context_chunks)
 
         user_prompt = f"Document context:\n\n{context_block}\n\nQuestion: {question}"

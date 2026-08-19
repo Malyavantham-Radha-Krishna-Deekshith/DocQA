@@ -49,6 +49,11 @@ RELEVANCE_THRESHOLD = 0.35
 
 NOT_FOUND_MESSAGE = "I couldn't find this information in the uploaded documents."
 
+# Cap on how many chunks a broad "overview of everything" question can send
+# to the LLM in one call, protecting the context window / cost when a
+# session has a large number of indexed documents.
+MAX_BROAD_CONTEXT_CHUNKS = 60
+
 # --- Session memory ---
 MAX_MEMORY_TURNS = 10
 

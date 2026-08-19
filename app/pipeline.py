@@ -83,13 +83,20 @@ class DocumentQAPipeline:
                 rewritten_query=result.rewritten_query,
             )
 
-        answer = self._llm.generate_answer(result.rewritten_query, result.chunks)
-        sources = format_sources(result.chunks)
+        answer = self._llm.generate_answer(result.rewritten_query, result.chunks, broad_overview=result.is_broad_overview)
         memory.add_turn(question, answer)
+
+        # Retrieval found *something* similar enough to pass the relevance
+        # gate, but the model itself can still decide none of it actually
+        # answers the question and fall back to NOT_FOUND_MESSAGE (system
+        # prompt rule 5). In that case sources shouldn't be shown — citing
+        # sources next to "couldn't find this" reads as contradictory.
+        actually_grounded = answer.strip() != settings.NOT_FOUND_MESSAGE
+        sources = format_sources(result.chunks) if actually_grounded else ""
 
         return AnswerResult(
             answer=answer,
             sources=sources,
-            is_grounded=True,
+            is_grounded=actually_grounded,
             rewritten_query=result.rewritten_query,
         )
