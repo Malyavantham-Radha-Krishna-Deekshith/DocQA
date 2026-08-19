@@ -13,7 +13,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import List
 
-from mistralai import Mistral
+from mistralai.client import Mistral
 
 from app.config import settings
 

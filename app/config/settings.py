@@ -10,6 +10,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def _get_secret(key: str, default: str = "") -> str:
+    """Reads from the environment (.env locally) first, falling back to
+    Streamlit Cloud's st.secrets when the env var isn't set there."""
+    value = os.getenv(key)
+    if value:
+        return value
+    try:
+        import streamlit as st
+        return st.secrets.get(key, default)
+    except Exception:
+        return default
+
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
 RAW_IMAGES_DIR = DATA_DIR / "raw_images"
@@ -17,7 +31,7 @@ PROCESSED_DIR = DATA_DIR / "processed"
 FAISS_INDEX_DIR = DATA_DIR / "faiss_index"
 
 # --- API keys ---
-MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
+MISTRAL_API_KEY = _get_secret("MISTRAL_API_KEY")
 
 # --- Models ---
 MISTRAL_OCR_MODEL = os.getenv("MISTRAL_OCR_MODEL", "mistral-ocr-latest")

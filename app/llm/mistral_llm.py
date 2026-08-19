@@ -1,5 +1,5 @@
 """Mistral chat client for query rewriting and grounded answer generation."""
-from mistralai import Mistral
+from mistralai.client import Mistral
 
 from app.config import settings
 from app.guardrails.grounding import build_grounding_system_prompt, build_context_block, NOT_FOUND_MESSAGE
