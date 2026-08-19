@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Document Q&amp;A</title>
+  <link rel="stylesheet" href="dist/output.css" />
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-900 antialiased dark:bg-slate-900 dark:text-slate-100">
+
+  <!-- Wake-up overlay: shown until the backend responds to /api/health -->
+  <div id="wake-overlay" class="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-slate-50 dark:bg-slate-900">
+    <div class="spinner h-8 w-8 text-brand-600"></div>
+    <p id="wake-message" class="max-w-sm text-center text-sm text-slate-600 dark:text-slate-400">Connecting…</p>
+  </div>
+
+  <!-- Toasts -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-40 flex flex-col gap-2"></div>
+
+  <div id="app" class="mx-auto hidden max-w-3xl px-4 py-8 sm:py-12 lg:max-w-6xl">
+    <header class="mb-8 text-center">
+      <h1 class="text-2xl font-bold tracking-tight sm:text-3xl">📄 Document Q&amp;A</h1>
+      <p class="mt-2 text-sm text-slate-600 dark:text-slate-400">
+        Upload or capture documents, then ask questions grounded strictly in their content.
+      </p>
+    </header>
+
+    <main class="space-y-6 lg:grid lg:grid-cols-[1fr_360px] lg:items-start lg:gap-6 lg:space-y-0">
+      <!-- Chat: left column on desktop, appears above documents on mobile once active -->
+      <section id="qa-section" class="card hidden lg:col-start-1 lg:row-start-1">
+        <h2 class="mb-4 text-base font-semibold">Ask Questions</h2>
+        <div id="chat-log" class="mb-4 flex max-h-[28rem] flex-col gap-4 overflow-y-auto lg:max-h-none lg:flex-1">
+          <div id="chat-empty-state" class="flex flex-1 flex-col items-center justify-center gap-2 py-12 text-center text-slate-400 dark:text-slate-500">
+            <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 0 1-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8Z" />
+            </svg>
+            <p class="text-sm">Ask a question about your documents to get started.</p>
+          </div>
+        </div>
+        <form id="chat-form" class="flex gap-2">
+          <input id="chat-input" type="text" autocomplete="off" placeholder="Ask a question about your documents…"
+            class="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-slate-600 dark:bg-slate-900" />
+          <button id="chat-send" type="submit" class="btn-primary">Ask</button>
+        </form>
+      </section>
+
+      <!-- Document management: right column on desktop. Explicit column/row
+           placement (not implicit auto-placement) so this stays pinned to
+           column 2 even while qa-section is hidden (display:none siblings
+           don't reserve a grid track, so auto-placement would otherwise
+           slide this into column 1). -->
+      <div class="space-y-6 lg:col-start-2 lg:row-start-1">
+      <section class="card">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-base font-semibold">Add Documents</h2>
+          <span id="image-count" class="text-xs text-slate-500 dark:text-slate-400"></span>
+        </div>
+
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label id="dropzone"
+            class="group flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center transition hover:border-brand-400 hover:bg-brand-50 dark:border-slate-600 dark:bg-slate-900 dark:hover:border-brand-500 dark:hover:bg-slate-800">
+            <svg class="h-8 w-8 text-slate-400 group-hover:text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            <span class="mt-2 text-sm font-medium">Drop images or click to browse</span>
+            <span class="mt-1 text-xs text-slate-500 dark:text-slate-400">JPG, PNG, WEBP — up to 20 files</span>
+            <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" />
+          </label>
+
+          <button id="camera-btn" type="button"
+            class="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center transition hover:border-brand-400 hover:bg-brand-50 dark:border-slate-600 dark:bg-slate-900 dark:hover:border-brand-500 dark:hover:bg-slate-800">
+            <svg class="h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" />
+            </svg>
+            <span class="text-sm font-medium">Take a photo</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Camera capture panel (hidden until "Take a photo" is used) -->
+      <section id="camera-panel" class="card hidden">
+        <div class="flex items-center justify-between">
+          <h2 class="text-base font-semibold">Camera</h2>
+          <button id="camera-close" type="button" class="text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">Close</button>
+        </div>
+        <div class="mt-3 overflow-hidden rounded-xl bg-black">
+          <video id="camera-video" class="mx-auto max-h-96 w-full object-contain" autoplay playsinline></video>
+        </div>
+        <canvas id="camera-canvas" class="hidden"></canvas>
+        <div class="mt-3 flex justify-center">
+          <button id="camera-capture" type="button" class="btn-primary">Capture</button>
+        </div>
+      </section>
+
+      <!-- Preview -->
+      <section id="preview-section" class="card hidden">
+        <h2 class="mb-4 text-base font-semibold">Preview</h2>
+        <div id="preview-grid" class="grid grid-cols-2 gap-3 sm:grid-cols-3"></div>
+      </section>
+
+      <!-- Process -->
+      <section id="process-section" class="card hidden">
+        <h2 class="mb-4 text-base font-semibold">Process</h2>
+        <div class="flex items-center gap-3">
+          <button id="process-btn" type="button" class="btn-primary">
+            <span id="process-btn-text">Process Documents</span>
+          </button>
+          <button id="start-over-btn" type="button" class="btn-secondary hidden">Start Over</button>
+        </div>
+        <p id="process-status" class="mt-3 text-sm text-slate-600 dark:text-slate-400"></p>
+        <div id="indexed-docs" class="mt-3 hidden">
+          <p class="text-xs font-medium text-slate-500 dark:text-slate-400">Indexed so far:</p>
+          <ul id="indexed-docs-list" class="mt-1.5 flex flex-wrap gap-1.5"></ul>
+        </div>
+      </section>
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

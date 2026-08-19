@@ -1,8 +1,9 @@
 """Top-level orchestrator wiring OCR -> normalization -> chunking ->
 embeddings -> FAISS -> retrieval -> guardrails -> LLM together
-(requirement 13's end-to-end flow). This is the module the UI layer talks
-to — it has no Streamlit-specific code so the same pipeline can sit behind
-a FastAPI app later without changes.
+(requirement 13's end-to-end flow). This is the module the API layer talks
+to. OCR/embedder/LLM clients are injected (shared across sessions by the
+caller); the store is per-session and in-memory only — nothing is persisted
+to disk, since each session gets its own isolated index.
 """
 from dataclasses import dataclass
 from typing import List, Tuple
@@ -28,11 +29,11 @@ class AnswerResult:
 
 
 class DocumentQAPipeline:
-    def __init__(self):
-        self._ocr = MistralOCRClient()
-        self._embedder = Embedder()
-        self._llm = MistralLLMClient()
-        self._store = FaissStore.load(settings.FAISS_INDEX_DIR, self._embedder.dimension)
+    def __init__(self, ocr: MistralOCRClient, embedder: Embedder, llm: MistralLLMClient, store: FaissStore):
+        self._ocr = ocr
+        self._embedder = embedder
+        self._llm = llm
+        self._store = store
         self._retriever = Retriever(self._embedder, self._store, self._llm)
 
     def process_documents(self, images: List[Tuple[bytes, str]]) -> dict:
@@ -55,8 +56,6 @@ class DocumentQAPipeline:
             embeddings = self._embedder.embed_texts([c.text for c in chunks])
             self._store.add(chunks, embeddings)
             total_chunks += len(chunks)
-
-        self._store.save(settings.FAISS_INDEX_DIR)
 
         return {
             "documents_processed": len(ocr_results),

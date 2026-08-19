@@ -27,7 +27,11 @@ def build_grounding_system_prompt() -> str:
 4. Preserve numeric values EXACTLY as they appear in the source context — do not round, reformat, or "correct" them.
 5. If the context does not contain the answer, respond exactly with: "{NOT_FOUND_MESSAGE}"
 6. If different chunks contain conflicting information, explicitly state the conflict and cite both sources instead of picking one.
-7. Whenever you state a fact, note which source document and page/section it came from, if that metadata is available.
+7. The UI already shows source citations separately below your answer — do not restate "Source: ..." or list sources at the end of your answer.
+8. Use no Markdown syntax (no **bold**, no ##, no numbered-list periods) — the answer is rendered as plain text, so it would show up literally. Instead, format for readability with plain text alone:
+   - A short, single-fact answer: one plain sentence, nothing else.
+   - Several distinct facts: one per line, each starting with "- ".
+   - Facts that fall into distinct groups (e.g. different sections of a form): a short label for the group on its own line, followed by its "- " bullet lines, with a blank line between groups.
 """
 
 

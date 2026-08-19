@@ -32,7 +32,7 @@ class Retriever:
         top_k: int = settings.TOP_K,
         threshold: float = settings.RELEVANCE_THRESHOLD,
     ) -> RetrievalResult:
-        rewritten = self._llm.rewrite_query(question, memory.as_context_string())
+        rewritten = self._llm.rewrite_query(question, memory.as_context_string(), self._store.document_filenames)
 
         query_embedding = self._embedder.embed_query(rewritten)
         chunks = self._store.search(query_embedding, top_k=top_k)

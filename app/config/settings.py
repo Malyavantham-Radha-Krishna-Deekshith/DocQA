@@ -10,20 +10,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
-def _get_secret(key: str, default: str = "") -> str:
-    """Reads from the environment (.env locally) first, falling back to
-    Streamlit Cloud's st.secrets when the env var isn't set there."""
-    value = os.getenv(key)
-    if value:
-        return value
-    try:
-        import streamlit as st
-        return st.secrets.get(key, default)
-    except Exception:
-        return default
-
-
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
 RAW_IMAGES_DIR = DATA_DIR / "raw_images"
@@ -31,7 +17,7 @@ PROCESSED_DIR = DATA_DIR / "processed"
 FAISS_INDEX_DIR = DATA_DIR / "faiss_index"
 
 # --- API keys ---
-MISTRAL_API_KEY = _get_secret("MISTRAL_API_KEY")
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 
 # --- Models ---
 MISTRAL_OCR_MODEL = os.getenv("MISTRAL_OCR_MODEL", "mistral-ocr-latest")
@@ -65,3 +51,21 @@ NOT_FOUND_MESSAGE = "I couldn't find this information in the uploaded documents.
 
 # --- Session memory ---
 MAX_MEMORY_TURNS = 10
+
+# --- API session lifecycle ---
+# How long a session's in-memory documents/chat history survive with no
+# activity before being evicted, and how often the sweep runs.
+SESSION_IDLE_SECONDS = 30 * 60
+SESSION_SWEEP_INTERVAL_SECONDS = 60
+
+# --- CORS ---
+# Comma-separated list of allowed frontend origins (the deployed Vercel URL
+# plus local dev servers). Set CORS_ORIGINS in the environment for prod.
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+]

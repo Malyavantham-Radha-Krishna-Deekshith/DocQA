@@ -12,19 +12,41 @@ class MistralLLMClient:
         self._client = Mistral(api_key=api_key)
         self._model = model
 
-    def rewrite_query(self, question: str, memory_context: str) -> str:
+    def rewrite_query(self, question: str, memory_context: str, document_names: list[str] | None = None) -> str:
         """Resolves conversational references (e.g. 'its' -> the last
-        discussed entity) using prior turns. Memory is only used to
+        discussed entity) using prior turns, and positional references (e.g.
+        "picture 2", "the second document") using the actual list of
+        uploaded documents. Memory and the document list are only used to
         disambiguate the question text itself, never as a source of facts
-        (requirement 8)."""
-        if not memory_context:
+        (requirement 8).
+
+        document_names matters even without conversational context: a first
+        question like "what's in picture 2?" still needs the document list
+        to resolve, so rewriting isn't gated on memory_context alone.
+        """
+        document_names = document_names or []
+        if not memory_context and len(document_names) < 2:
             return question
 
+        documents_block = (
+            "\n".join(f"{i + 1}. {name}" for i, name in enumerate(document_names))
+            if document_names
+            else "(none uploaded yet)"
+        )
+
         prompt = (
-            "Given the conversation history and a follow-up question, rewrite the "
-            "follow-up question to be fully self-contained by resolving pronouns "
-            "and references. Output ONLY the rewritten question, nothing else.\n\n"
-            f"Conversation history:\n{memory_context}\n\n"
+            "Given the uploaded document list, the conversation history, and a follow-up "
+            "question, rewrite the follow-up question to be fully self-contained. "
+            "Resolve pronouns and references using the conversation history. Resolve "
+            "positional references to documents (e.g. \"picture 2\", \"the second image\", "
+            "\"the second document\") using the numbered document list below, naming the "
+            "actual filename instead of the position.\n\n"
+            "If the follow-up question is about a different document or topic than the "
+            "conversation history, treat it as a fresh question about that document — do "
+            "not merge it with the prior topic. Output ONLY the rewritten question, "
+            "nothing else.\n\n"
+            f"Uploaded documents (in upload order):\n{documents_block}\n\n"
+            f"Conversation history:\n{memory_context or '(none yet)'}\n\n"
             f"Follow-up question: {question}\n\n"
             "Rewritten standalone question:"
         )

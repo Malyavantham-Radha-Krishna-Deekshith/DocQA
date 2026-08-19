@@ -67,6 +67,15 @@ class FaissStore:
     def is_empty(self) -> bool:
         return self._index.ntotal == 0
 
+    @property
+    def document_filenames(self) -> List[str]:
+        """Unique filenames in upload order, for resolving positional
+        references like "picture 2" during query rewriting."""
+        seen: dict[str, None] = {}
+        for meta in self._metadata:
+            seen.setdefault(meta["filename"], None)
+        return list(seen.keys())
+
     def save(self, dir_path: Path) -> None:
         dir_path.mkdir(parents=True, exist_ok=True)
         faiss.write_index(self._index, str(dir_path / "index.faiss"))
