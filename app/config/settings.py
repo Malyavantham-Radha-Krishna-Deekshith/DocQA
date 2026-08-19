@@ -22,7 +22,7 @@ MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 # --- Models ---
 MISTRAL_OCR_MODEL = os.getenv("MISTRAL_OCR_MODEL", "mistral-ocr-latest")
 MISTRAL_LLM_MODEL = os.getenv("MISTRAL_LLM_MODEL", "mistral-large-latest")
-EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-small-en-v1.5")
+EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "mistral-embed")
 
 # --- Upload constraints ---
 MIN_IMAGES = 1
