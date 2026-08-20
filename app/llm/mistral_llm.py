@@ -12,6 +12,8 @@ from app.guardrails.grounding import build_grounding_system_prompt, build_contex
 class QueryUnderstanding:
     rewritten_query: str
     is_broad_overview: bool
+    is_conversational: bool = False
+    conversational_reply: str = ""
 
 
 class MistralLLMClient:
@@ -24,49 +26,59 @@ class MistralLLMClient:
     def understand_query(
         self, question: str, memory_context: str, document_names: list[str] | None = None
     ) -> QueryUnderstanding:
-        """One call doing two things, to avoid a second round-trip per question:
+        """One call doing three things, to avoid extra round-trips per message:
 
-        1. Rewrites the question to be fully self-contained — resolving
+        1. Classifies whether this is conversational small talk (a greeting,
+           thanks, "how are you", etc.) rather than an actual question about
+           the uploaded documents — and if so, writes a short, warm reply
+           directly, as a friendly document Q&A assistant. This runs on
+           every message, including the very first one with nothing
+           uploaded yet, since a greeting is just as likely to open a
+           conversation as follow it.
+        2. Rewrites real questions to be fully self-contained — resolving
            conversational references (e.g. 'its' -> the last discussed
            entity) using prior turns, and positional references (e.g.
            "picture 2", "the second document") using the actual list of
            uploaded documents. Memory and the document list only disambiguate
            the question text itself, never a source of facts (requirement 8).
-        2. Classifies whether the question is a broad request for an overview
-           of everything uploaded ("give me detailed info", "what's in
-           these") rather than a specific, narrow question — most users
+        3. Classifies whether a real question is a broad request for an
+           overview of everything uploaded ("give me detailed info", "what's
+           in these") rather than a specific, narrow question — most users
            won't name a document when asking broadly, so this can't be a
            keyword check; it needs actual understanding.
-
-        document_names matters even without conversational context: a first
-        question like "what's in picture 2?" still needs the document list
-        to resolve, and a first question can just as easily be a broad
-        overview request. Only skipped when there's nothing to disambiguate
-        and too few documents for "broad vs. specific" to be a meaningful
-        distinction.
         """
         document_names = document_names or []
-        if not memory_context and len(document_names) < 2:
-            return QueryUnderstanding(rewritten_query=question, is_broad_overview=False)
-
-        documents_block = "\n".join(f"{i + 1}. {name}" for i, name in enumerate(document_names))
+        documents_block = (
+            "\n".join(f"{i + 1}. {name}" for i, name in enumerate(document_names))
+            if document_names
+            else "(none uploaded yet)"
+        )
 
         prompt = (
             "Given the uploaded document list, the conversation history, and a follow-up "
-            "question, respond with ONLY a JSON object (no other text) with exactly these keys:\n\n"
-            '"rewritten_question": the question rewritten to be fully self-contained. Resolve '
-            "pronouns and references using the conversation history. Resolve positional references "
-            'to documents (e.g. "picture 2", "the second image", "the second document") using the '
-            "numbered document list below, naming the actual filename instead of the position. If "
-            "the follow-up question is about a different document or topic than the conversation "
-            "history, treat it as a fresh question about that document — do not merge it with the "
-            "prior topic.\n\n"
-            '"is_broad_overview": true if the question is a broad request for an overview/summary '
-            "covering everything uploaded (e.g. \"give me detailed info\", \"what's in these\", "
-            '"summarize these"), false if it is a specific question about particular content.\n\n'
+            "message, respond with ONLY a JSON object (no other text) with exactly these keys:\n\n"
+            '"is_conversational": true if the message is a greeting, casual small talk, or '
+            'pleasantry (e.g. "hi", "hai", "how are you", "thanks") rather than an actual question '
+            "about the uploaded documents. false otherwise.\n\n"
+            '"conversational_reply": only meaningful when is_conversational is true — a short, warm, '
+            "natural reply (1-2 sentences), as a friendly assistant for a document Q&A app. If no "
+            "documents are uploaded yet, gently invite them to upload one; otherwise you may "
+            "acknowledge the conversation so far. Never answer factual questions from general "
+            'knowledge here. Empty string if is_conversational is false.\n\n'
+            '"rewritten_question": only meaningful when is_conversational is false — the message '
+            "rewritten to be fully self-contained. Resolve pronouns and references using the "
+            'conversation history. Resolve positional references to documents (e.g. "picture 2", '
+            '"the second image", "the second document") using the numbered document list below, '
+            "naming the actual filename instead of the position. If the message is about a "
+            "different document or topic than the conversation history, treat it as a fresh "
+            "question about that document — do not merge it with the prior topic.\n\n"
+            '"is_broad_overview": only meaningful when is_conversational is false — true if the '
+            "question is a broad request for an overview/summary covering everything uploaded "
+            '(e.g. "give me detailed info", "what\'s in these", "summarize these"), false if it is '
+            "a specific question about particular content.\n\n"
             f"Uploaded documents (in upload order):\n{documents_block}\n\n"
             f"Conversation history:\n{memory_context or '(none yet)'}\n\n"
-            f"Follow-up question: {question}"
+            f"Follow-up message: {question}"
         )
         response = self._client.chat.complete(
             model=self._model,
@@ -77,6 +89,14 @@ class MistralLLMClient:
         raw = response.choices[0].message.content.strip()
         try:
             parsed = json.loads(raw)
+            if bool(parsed.get("is_conversational", False)):
+                reply = str(parsed.get("conversational_reply") or "").strip()
+                return QueryUnderstanding(
+                    rewritten_query=question,
+                    is_broad_overview=False,
+                    is_conversational=True,
+                    conversational_reply=reply or "Hi! Upload a document and ask me anything about it.",
+                )
             rewritten = str(parsed.get("rewritten_question") or "").strip()
             return QueryUnderstanding(
                 rewritten_query=rewritten or question,

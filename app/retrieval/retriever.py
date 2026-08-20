@@ -18,6 +18,8 @@ class RetrievalResult:
     chunks: List[dict]
     is_relevant: bool
     is_broad_overview: bool = False
+    is_conversational: bool = False
+    conversational_reply: str = ""
 
 
 class Retriever:
@@ -36,6 +38,15 @@ class Retriever:
         understanding = self._llm.understand_query(
             question, memory.as_context_string(), self._store.document_filenames
         )
+
+        if understanding.is_conversational:
+            return RetrievalResult(
+                rewritten_query=understanding.rewritten_query,
+                chunks=[],
+                is_relevant=False,
+                is_conversational=True,
+                conversational_reply=understanding.conversational_reply,
+            )
 
         if understanding.is_broad_overview:
             # Bypass similarity search entirely: a vague "give me everything"

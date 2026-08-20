@@ -63,15 +63,30 @@ class DocumentQAPipeline:
         }
 
     def answer_question(self, question: str, memory: SessionMemory) -> AnswerResult:
-        if self._store.is_empty:
+        # Runs before checking whether anything's been uploaded — a greeting
+        # ("hai", "thanks") is just as likely to open a conversation as
+        # follow one, and shouldn't need a document indexed to get a normal
+        # reply instead of the cold not-found guardrail message.
+        result = self._retriever.retrieve(question, memory)
+
+        if result.is_conversational:
+            memory.add_turn(question, result.conversational_reply)
             return AnswerResult(
-                answer=settings.NOT_FOUND_MESSAGE,
+                answer=result.conversational_reply,
                 sources="",
                 is_grounded=False,
-                rewritten_query=question,
+                rewritten_query=result.rewritten_query,
             )
 
-        result = self._retriever.retrieve(question, memory)
+        if self._store.is_empty:
+            answer = settings.NOT_FOUND_MESSAGE
+            memory.add_turn(question, answer)
+            return AnswerResult(
+                answer=answer,
+                sources="",
+                is_grounded=False,
+                rewritten_query=result.rewritten_query,
+            )
 
         if not result.is_relevant or not result.chunks:
             answer = settings.NOT_FOUND_MESSAGE

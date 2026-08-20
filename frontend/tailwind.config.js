@@ -1,7 +1,11 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: ["./index.html", "./src/**/*.js"],
-  darkMode: "media",
+  // Light theme only, by design: no `dark:` variant classes are used
+  // anywhere in this project, so there's nothing for a darkMode setting to
+  // toggle. (Tailwind 3.4.19+ warns that `darkMode: false` no longer
+  // disables generation and now behaves like "media" — moot here either
+  // way, since the markup carries no dark: classes to match against.)
   theme: {
     extend: {
       colors: {

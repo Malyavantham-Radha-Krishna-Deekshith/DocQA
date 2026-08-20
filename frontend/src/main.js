@@ -53,9 +53,9 @@ function setVisible(node, visible, display = "flex") {
 
 function showToast(message, type = "info") {
   const styles = {
-    error: "border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200",
-    success: "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
-    info: "border-slate-300 bg-white text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100",
+    error: "border-red-300 bg-red-50 text-red-800",
+    success: "border-emerald-300 bg-emerald-50 text-emerald-800",
+    info: "border-slate-300 bg-white text-slate-800",
   };
   const toast = document.createElement("div");
   toast.className = `animate-fade-in max-w-xs rounded-lg border px-4 py-3 text-sm shadow-lg ${styles[type] || styles.info}`;
@@ -131,7 +131,7 @@ function retryAttachment(id) {
 
 function buildTrayChip(record) {
   const chip = document.createElement("div");
-  chip.className = "relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-600";
+  chip.className = "relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-slate-200";
 
   const img = document.createElement("img");
   img.src = record.url;
@@ -265,7 +265,7 @@ function appendBubble({ role, text, attachments = [] }) {
   bubble.className =
     role === "user"
       ? "max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-brand-600 px-4 py-2.5 text-sm text-white"
-      : "max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-sm bg-slate-100 px-4 py-2.5 text-sm leading-relaxed text-slate-800 dark:bg-slate-700 dark:text-slate-100";
+      : "max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-sm bg-slate-100 px-4 py-2.5 text-sm leading-relaxed text-slate-800";
 
   if (attachments.length > 0) {
     const thumbRow = document.createElement("div");
@@ -302,9 +302,9 @@ function appendBubble({ role, text, attachments = [] }) {
 function appendSources(container, sourcesText) {
   if (!sourcesText) return;
   const details = document.createElement("details");
-  details.className = "mt-1.5 text-xs text-slate-500 dark:text-slate-400";
+  details.className = "mt-1.5 text-xs text-slate-500";
   const summary = document.createElement("summary");
-  summary.className = "cursor-pointer select-none hover:text-slate-700 dark:hover:text-slate-300";
+  summary.className = "cursor-pointer select-none hover:text-slate-700";
   summary.textContent = "Sources";
   const pre = document.createElement("pre");
   pre.className = "mt-1 whitespace-pre-wrap font-sans";
